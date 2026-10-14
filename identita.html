@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policajný systém – Správa charakterov a vozidiel</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDINzW31aIhySu4-yFHaz2t9s9hNc19xH0",
+            authDomain: "chars-info.firebaseapp.com",
+            projectId: "chars-info",
+            storageBucket: "chars-info.firebasestorage.app",
+            messagingSenderId: "496539316759",
+            appId: "1:496539316759:web:d06ced67a25398e76b2252",
+            measurementId: "G-4EMEYPB4NH"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.fbCollection = collection;
+        window.fbGetDocs = getDocs;
+        window.fbDoc = doc;
+        window.fbSetDoc = setDoc;
+        window.fbDeleteDoc = deleteDoc;
+        window.fbUpdateDoc = updateDoc;
+        window.fbOnSnapshot = onSnapshot;
+
+        window.initFirebaseListeners();
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+
+    <div id="app-container" class="min-h-screen flex flex-col">
+        
+        <!-- HORNÝ PANEL -->
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4 w-full sm:w-auto">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-id-badge text-slate-700 text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Aktívny charakter:</span>
+                </div>
+                <select id="active-character-select" onchange="switchActiveCharacter(this.value)" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 min-w-[200px]">
+                    <option value="">-- Žiadny charakter --</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="current-user-badge" class="text-xs font-semibold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                    <i class="fa-solid fa-user text-slate-500 mr-1.5"></i> <span id="display-username"></span>
+                </span>
+                <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                    <i class="fa-solid fa-cloud text-emerald-600 mr-1.5"></i> Firebase Cloud
+                </span>
+                <button onclick="window.close()" class="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition border border-red-200">
+                    <i class="fa-solid fa-xmark mr-1"></i> Zavrieť okno
+                </button>
+            </div>
+        </header>
+
+        <!-- SUB-HEADER / NAVIGÁCIA -->
+        <nav class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <button onclick="switchTab('characters')" id="tab-btn-characters" class="text-sm font-semibold text-slate-900 border-b-2 border-slate-900 pb-1 transition">
+                    Zvolený Charakter
+                </button>
+                <button onclick="switchTab('vehicles-manage')" id="tab-btn-vehicles-manage" class="text-sm font-medium text-slate-500 hover:text-slate-900 pb-1 transition">
+                    Správa vozidiel
+                </button>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openCreateVehicleModal()" id="new-veh-top-btn" class="hidden bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-car"></i> Nové vozidlo
+                </button>
+                <button onclick="openCreateCharacterModal()" id="new-char-top-btn" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Nový charakter
+                </button>
+            </div>
+        </nav>
+
+        <!-- OBSAH STRÁNKY -->
+        <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+            
+            <!-- ZOZNAM A SPRÁVA CHARAKTEROV -->
+            <div id="tab-characters" class="space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">Správa charakterov</h2>
+                        <p class="text-xs text-slate-500">Zoznam vašich vytvorených civilných charakterov (max. 10 charakterov).</p>
+                    </div>
+                </div>
+
+                <!-- Formulár charakteru -->
+                <div id="character-form-card" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hidden">
+                    <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                        <h3 id="form-title" class="text-sm font-bold text-slate-900 uppercase tracking-wide">Vytvoriť nový charakter</h3>
+                        <button onclick="hideCharacterForm()" class="text-slate-400 hover:text-slate-600 text-sm"><i class="fa-solid fa-xmark"></i> Zrušiť</button>
+                    </div>
+                    <form onsubmit="saveCharacter(event)" class="space-y-5">
+                        <input type="hidden" id="char-id">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Meno</label>
+                                <input type="text" id="char-first" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Priezvisko</label>
+                                <input type="text" id="char-last" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Dátum narodenia</label>
+                                <input type="date" id="char-dob" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Občianstvo</label>
+                                <input type="text" id="char-citizenship" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm" placeholder="napr. Slovenské">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Pohlavie</label>
+                                <select id="char-sex" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                                    <option value="Muž">Muž</option>
+                                    <option value="Žena">Žena</option>
+                                    <option value="Iné">Iné</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h4 class="text-xs font-bold uppercase text-slate-700">Vodičské oprávnenia a sankcie</h4>
+                            <div class="flex flex-wrap gap-4">
+                                <label class="text-xs font-semibold text-slate-600">Skupiny VP:</label>
+                                <div class="flex gap-3">
+                                    <label class="text-xs font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" id="form-vpp-A" class="rounded"> A</label>
+                                    <label class="text-xs font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" id="form-vpp-B" class="rounded"> B</label>
+                                    <label class="text-xs font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" id="form-vpp-C" class="rounded"> C</label>
+                                    <label class="text-xs font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" id="form-vpp-D" class="rounded"> D</label>
+                                    <label class="text-xs font-bold flex items-center gap-1 cursor-pointer"><input type="checkbox" id="form-vpp-T" class="rounded"> T</label>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap gap-4 pt-2 border-t border-slate-200">
+                                <label class="text-xs font-bold flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-zadrzanie-vp" class="rounded"> Zadržanie VP</label>
+                                <label class="text-xs font-bold flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-blokacia-vp" class="rounded"> Blokácia VP</label>
+                                <label class="text-xs font-bold flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="form-zakaz-mo" class="rounded"> Zákaz riadenia MO</label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                                <label class="block text-xs font-bold uppercase text-slate-700"><i class="fa-solid fa-triangle-exclamation text-red-600 mr-1"></i> Pátranie po osobe</label>
+                                <select id="form-patranie" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm">
+                                    <option value="">-- Bez pátrania --</option>
+                                    <option value="Príkaz na zatknutie">Príkaz na zatknutie</option>
+                                    <option value="Príkaz na dodanie do VTOS">Príkaz na dodanie do VTOS</option>
+                                    <option value="Súhlas so zadržaním">Súhlas so zadržaním</option>
+                                </select>
+                            </div>
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                                <label class="block text-xs font-bold uppercase text-slate-700"><i class="fa-solid fa-file-shield text-slate-600 mr-1"></i> CEPAN</label>
+                                <input type="text" id="form-cepan" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" placeholder="Poznámka / suma v CEPAN...">
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-2 pt-2">
+                            <button type="button" onclick="hideCharacterForm()" class="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-medium rounded-lg">Zrušiť</button>
+                            <button type="submit" class="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg">Uložiť charakter</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="characters-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- SPRÁVA VOZIDIEL -->
+            <div id="tab-vehicles-manage" class="space-y-6 hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">Správa vozidiel</h2>
+                        <p class="text-xs text-slate-500">Zoznam vašich evidovaných vozidiel.</p>
+                    </div>
+                </div>
+
+                <!-- Formulár vozidla -->
+                <div id="vehicle-form-card" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hidden">
+                    <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                        <h3 id="veh-form-title" class="text-sm font-bold text-slate-900 uppercase tracking-wide">Registrovať vozidlo</h3>
+                        <button onclick="hideVehicleForm()" class="text-slate-400 hover:text-slate-600 text-sm"><i class="fa-solid fa-xmark"></i> Zrušiť</button>
+                    </div>
+                    <form onsubmit="saveVehicle(event)" class="space-y-4">
+                        <input type="hidden" id="veh-db-id">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">EČV (ŠPZ)</label>
+                                <input type="text" id="veh-spz" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm uppercase" placeholder="napr. BA123XY">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Značka a model</label>
+                                <input type="text" id="veh-model" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm" placeholder="napr. Audi A6">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Farba vozidla</label>
+                                <input type="text" id="veh-color" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm" placeholder="napr. Čierna">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Majiteľ (Váš charakter)</label>
+                                <select id="veh-owner" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm">
+                                    <option value="">-- Vyberte majiteľa --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">VIN Číslo</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="veh-vin" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono uppercase" placeholder="VIN...">
+                                    <button type="button" onclick="generateVIN()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-medium rounded-lg whitespace-nowrap"><i class="fa-solid fa-arrows-rotate mr-1"></i> Vygenerovať</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                            <h4 class="text-xs font-bold uppercase text-slate-700">Evidencia a právny stav vozidla</h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <label class="block text-xs font-bold uppercase text-slate-700"><i class="fa-solid fa-triangle-exclamation text-red-600 mr-1"></i> Pátranie po vozidle</label>
+                                    <select id="veh-patranie" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm">
+                                        <option value="">-- Bez pátrania --</option>
+                                        <option value="Hľadané vozidlo">Hľadané vozidlo</option>
+                                        <option value="Zhabané vozidlo">Zhabané vozidlo</option>
+                                        <option value="Súvis s trestnou činnosťou">Súvis s trestnou činnosťou</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="block text-xs font-bold uppercase text-slate-700"><i class="fa-solid fa-file-shield text-slate-600 mr-1"></i> CEPAN (Vozidlo)</label>
+                                    <input type="text" id="veh-cepan" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" placeholder="Poznámka / suma...">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                                <label class="text-xs font-bold flex items-center gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+                                    <input type="checkbox" id="veh-nepoistene" class="w-4 h-4 rounded text-slate-900"> Nepoistené vozidlo (PZP)
+                                </label>
+                                <label class="text-xs font-bold flex items-center gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
+                                    <input type="checkbox" id="veh-znamka" class="w-4 h-4 rounded text-slate-900"> Platná diaľničná známka
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-2 pt-2">
+                            <button type="button" onclick="hideVehicleForm()" class="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-medium rounded-lg">Zrušiť</button>
+                            <button type="submit" class="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg">Uložiť vozidlo</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="vehicles-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- DETAIL CHARAKTERU -->
+            <div id="character-detail-view" class="hidden space-y-6">
+                <button onclick="backToCharactersList()" class="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                    <i class="fa-solid fa-arrow-left"></i> Späť
+                </button>
+                <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-100">
+                        <div>
+                            <span id="detail-active-badge" class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold mb-2"></span>
+                            <h2 id="detail-name" class="text-2xl font-bold text-slate-900">Meno Priezvisko</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">ID: <span id="detail-id" class="font-mono"></span></p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="setAsActiveFromDetail()" id="detail-activate-btn" class="px-4 py-2 text-xs font-medium rounded-lg transition border"></button>
+                            <button onclick="editCurrentCharacter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg">Upraviť</button>
+                            <button onclick="deleteCurrentCharacter()" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg border border-red-200">Zmazať</button>
+                        </div>
+                    </div>
+                    <div id="character-alerts-container" class="flex flex-wrap gap-2"></div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 py-4 border-b border-slate-100 text-sm">
+                        <div>
+                            <span class="block text-xs font-semibold uppercase text-slate-400">Dátum narodenia</span>
+                            <span id="detail-dob" class="font-medium text-slate-800"></span>
+                        </div>
+                        <div>
+                            <span class="block text-xs font-semibold uppercase text-slate-400">Občianstvo</span>
+                            <span id="detail-citizenship" class="font-medium text-slate-800"></span>
+                        </div>
+                        <div>
+                            <span class="block text-xs font-semibold uppercase text-slate-400">Pohlavie</span>
+                            <span id="detail-sex" class="font-medium text-slate-800"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DETAIL VOZIDLA -->
+            <div id="vehicle-detail-view" class="hidden space-y-6">
+                <button onclick="backFromVehicleDetail()" class="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                    <i class="fa-solid fa-arrow-left"></i> Späť
+                </button>
+                <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-100">
+                        <div>
+                            <span id="veh-detail-spz-badge" class="inline-block font-mono text-sm font-bold bg-slate-900 text-white px-3 py-1 rounded-lg mb-2"></span>
+                            <h2 id="veh-detail-model" class="text-2xl font-bold text-slate-900">Model Vozidla</h2>
+                            <p class="text-xs text-slate-500 mt-0.5 font-mono">VIN: <span id="veh-detail-vin"></span> | Farba: <span id="veh-detail-color" class="font-semibold text-slate-800"></span></p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="editCurrentVehicle()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg">Upraviť vozidlo</button>
+                            <button onclick="deleteCurrentVehicle()" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg border border-red-200">Zmazať vozidlo</button>
+                        </div>
+                    </div>
+                    <div id="vehicle-alerts-container" class="flex flex-wrap gap-2"></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 py-4 border-b border-slate-100">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <span class="block text-xs font-semibold uppercase text-slate-400 mb-1">Majiteľ vozidla</span>
+                            <div id="veh-detail-owner-info" class="text-sm font-bold text-slate-900"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- JAVASCRIPT LOGIKA -->
+    <script src="config.js"></script>
+    <script>
+        const MAX_CHARACTERS = 10;
+        const VPP_GROUPS = ['A', 'B', 'C', 'D', 'T'];
+
+        let currentUsername = localStorage.getItem('rp_roblox_username') || "Hráč";
+        let allCharacters = [], characters = [], allVehicles = [], vehicles = [];
+        let activeCharacterId = localStorage.getItem('activeCharacterId') || null;
+        let currentDetailId = null, currentVehicleDetailId = null;
+
+        window.initFirebaseListeners = function() {
+            if (!window.db) return;
+            window.fbOnSnapshot(window.fbCollection(window.db, "characters"), (snapshot) => {
+                allCharacters = [];
+                snapshot.forEach((doc) => allCharacters.push({ id: doc.id, ...doc.data() }));
+                characters = allCharacters.filter(c => c.ownerUsername && c.ownerUsername.toLowerCase() === currentUsername.toLowerCase());
+                renderCharacters();
+                updateActiveCharacterDropdown();
+                updateVehicleOwnerDropdown();
+                if (currentDetailId) openDetail(currentDetailId);
+            });
+            window.fbOnSnapshot(window.fbCollection(window.db, "vehicles"), (snapshot) => {
+                allVehicles = [];
+                snapshot.forEach((doc) => allVehicles.push({ id: doc.id, ...doc.data() }));
+                vehicles = allVehicles.filter(v => {
+                    const owner = allCharacters.find(c => c.id === v.ownerId);
+                    return owner && owner.ownerUsername && owner.ownerUsername.toLowerCase() === currentUsername.toLowerCase();
+                });
+                renderVehicles();
+                if (currentVehicleDetailId) openVehicleDetail(currentVehicleDetailId);
+            });
+        };
+
+        window.onload = function() {
+            document.getElementById('display-username').innerText = currentUsername;
+            renderCharacters();
+            renderVehicles();
+            updateActiveCharacterDropdown();
+            updateVehicleOwnerDropdown();
+        };
+
+        function switchTab(tabName) {
+            const charTab = document.getElementById('tab-characters');
+            const vehTab = document.getElementById('tab-vehicles-manage');
+            const detailView = document.getElementById('character-detail-view');
+            const vehDetailView = document.getElementById('vehicle-detail-view');
+            const btnChar = document.getElementById('tab-btn-characters');
+            const btnVeh = document.getElementById('tab-btn-vehicles-manage');
+            const newCharBtn = document.getElementById('new-char-top-btn');
+            const newVehBtn = document.getElementById('new-veh-top-btn');
+
+            detailView.classList.add('hidden');
+            vehDetailView.classList.add('hidden');
+            charTab.classList.add('hidden');
+            vehTab.classList.add('hidden');
+            newCharBtn.classList.add('hidden');
+            newVehBtn.classList.add('hidden');
+
+            btnChar.className = "text-sm font-medium text-slate-500 hover:text-slate-900 pb-1 transition";
+            btnVeh.className = "text-sm font-medium text-slate-500 hover:text-slate-900 pb-1 transition";
+
+            if (tabName === 'characters') {
+                charTab.classList.remove('hidden');
+                newCharBtn.classList.remove('hidden');
+                btnChar.className = "text-sm font-semibold text-slate-900 border-b-2 border-slate-900 pb-1 transition";
+            } else if (tabName === 'vehicles-manage') {
+                vehTab.classList.remove('hidden');
+                newVehBtn.classList.remove('hidden');
+                btnVeh.className = "text-sm font-semibold text-slate-900 border-b-2 border-slate-900 pb-1 transition";
+            }
+        }
+
+        function generateVIN() {
+            const chars = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
+            let vin = 'SK';
+            for (let i = 0; i < 15; i++) vin += chars.charAt(Math.floor(Math.random() * chars.length));
+            document.getElementById('veh-vin').value = vin;
+        }
+
+        function openCreateCharacterModal(editData = null) {
+            const card = document.getElementById('character-form-card');
+            card.classList.remove('hidden');
+            if (editData) {
+                document.getElementById('form-title').innerText = "Upraviť charakter";
+                document.getElementById('char-id').value = editData.id;
+                document.getElementById('char-first').value = editData.first;
+                document.getElementById('char-last').value = editData.last;
+                document.getElementById('char-dob').value = editData.dob;
+                document.getElementById('char-citizenship').value = editData.citizenship;
+                document.getElementById('char-sex').value = editData.sex;
+                document.getElementById('form-patranie').value = editData.patranie || '';
+                document.getElementById('form-cepan').value = editData.cepan || '';
+            } else {
+                document.getElementById('form-title').innerText = "Vytvoriť nový charakter";
+                document.getElementById('char-id').value = '';
+                document.querySelector('#character-form-card form').reset();
+            }
+            card.scrollIntoView({ behavior: 'smooth' });
+        }
+        function hideCharacterForm() { document.getElementById('character-form-card').classList.add('hidden'); }
+
+        async function saveCharacter(event) {
+            event.preventDefault();
+            const idVal = document.getElementById('char-id').value;
+            const charId = idVal ? idVal : 'CHAR-' + Math.floor(100000 + Math.random() * 900000);
+            await window.fbSetDoc(window.fbDoc(window.db, "characters", charId), {
+                first: document.getElementById('char-first').value,
+                last: document.getElementById('char-last').value,
+                dob: document.getElementById('char-dob').value,
+                citizenship: document.getElementById('char-citizenship').value,
+                sex: document.getElementById('char-sex').value,
+                patranie: document.getElementById('form-patranie').value,
+                cepan: document.getElementById('form-cepan').value.trim(),
+                ownerUsername: currentUsername
+            });
+            hideCharacterForm();
+            if (currentDetailId) openDetail(currentDetailId);
+        }
+
+        function renderCharacters() {
+            const grid = document.getElementById('characters-grid');
+            if (!grid) return;
+            grid.innerHTML = characters.length === 0 ? `<div class="col-span-full text-center py-12 bg-white border rounded-xl"><p class="text-sm text-slate-600">Žiadne charaktery.</p></div>` : characters.map(c => `
+                <div class="bg-white border rounded-xl p-5 shadow-sm flex flex-col justify-between ${c.id === activeCharacterId ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200'}">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-mono px-2 py-0.5 bg-slate-100 rounded">${c.id}</span>
+                            ${c.id === activeCharacterId ? '<span class="text-xs font-semibold bg-slate-900 text-white px-2 py-0.5 rounded">Aktívny</span>' : ''}
+                        </div>
+                        <h3 class="text-base font-bold text-slate-900 mb-1">${c.first} ${c.last}</h3>
+                        <p class="text-xs text-slate-500 mb-3">Nar.: ${c.dob} | Občianstvo: ${c.citizenship}</p>
+                    </div>
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <button onclick="openDetail('${c.id}')" class="text-xs font-medium text-slate-900 hover:underline">Zobraziť detail</button>
+                        <button onclick="switchActiveCharacter('${c.id}')" class="text-xs font-medium ${c.id === activeCharacterId ? 'text-slate-400' : 'text-slate-700 bg-slate-100 px-2.5 py-1 rounded'}">${c.id === activeCharacterId ? 'Zvolený' : 'Prepnúť'}</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateActiveCharacterDropdown() {
+            const select = document.getElementById('active-character-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Žiadny charakter --</option>';
+            characters.forEach(c => select.innerHTML += `<option value="${c.id}" ${c.id === activeCharacterId ? 'selected' : ''}>${c.first} ${c.last} (${c.id})</option>`);
+        }
+
+        function switchActiveCharacter(id) {
+            activeCharacterId = id || null;
+            localStorage.setItem('activeCharacterId', activeCharacterId || '');
+            renderCharacters();
+            updateActiveCharacterDropdown();
+        }
+
+        function openDetail(id) {
+            currentDetailId = id;
+            const c = allCharacters.find(item => item.id === id);
+            if (!c) return;
+            document.getElementById('tab-characters').classList.add('hidden');
+            document.getElementById('tab-vehicles-manage').classList.add('hidden');
+            document.getElementById('character-form-card').classList.add('hidden');
+            document.getElementById('character-detail-view').classList.remove('hidden');
+
+            document.getElementById('detail-name').innerText = `${c.first} ${c.last}`;
+            document.getElementById('detail-id').innerText = c.id;
+            document.getElementById('detail-dob').innerText = c.dob;
+            document.getElementById('detail-citizenship').innerText = c.citizenship;
+            document.getElementById('detail-sex').innerText = c.sex;
+
+            const alerts = document.getElementById('character-alerts-container');
+            alerts.innerHTML = '';
+            if (c.patranie) alerts.innerHTML += `<div class="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">PÁTRANIE: ${c.patranie}</div>`;
+            if (c.cepan) alerts.innerHTML += `<div class="bg-white text-slate-900 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg">CEPAN: ${c.cepan}</div>`;
+
+            const badge = document.getElementById('detail-active-badge');
+            const btn = document.getElementById('detail-activate-btn');
+            if (c.id === activeCharacterId) {
+                badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold mb-2 bg-slate-900 text-white";
+                badge.innerText = "Aktívny charakter";
+                btn.className = "px-4 py-2 text-xs font-medium rounded-lg transition border bg-slate-100 text-slate-400 cursor-default";
+                btn.innerText = "Je aktívny";
+                btn.disabled = true;
+            } else {
+                badge.className = "inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold mb-2 bg-slate-100 text-slate-600";
+                badge.innerText = "Neaktívny charakter";
+                btn.className = "px-4 py-2 text-xs font-medium rounded-lg transition border bg-white hover:bg-slate-50 text-slate-700 border-slate-300";
+                btn.innerText = "Prepnúť ako aktívny";
+                btn.disabled = false;
+            }
+        }
+
+        function backToCharactersList() { currentDetailId = null; document.getElementById('character-detail-view').classList.add('hidden'); switchTab('characters'); }
+        function setAsActiveFromDetail() { if (currentDetailId) { switchActiveCharacter(currentDetailId); openDetail(currentDetailId); } }
+        function editCurrentCharacter() { const c = allCharacters.find(item => item.id === currentDetailId); if (c) { document.getElementById('character-detail-view').classList.add('hidden'); document.getElementById('tab-characters').classList.remove('hidden'); openCreateCharacterModal(c); } }
+        async function deleteCurrentCharacter() { if (confirm("Naozaj vymazať charakter?")) { await window.fbDeleteDoc(window.fbDoc(window.db, "characters", currentDetailId)); backToCharactersList(); } }
+
+        function openCreateVehicleModal(editData = null) {
+            const card = document.getElementById('vehicle-form-card');
+            card.classList.remove('hidden');
+            if (editData) {
+                document.getElementById('veh-form-title').innerText = "Upraviť vozidlo";
+                document.getElementById('veh-db-id').value = editData.id;
+                document.getElementById('veh-spz').value = editData.spz;
+                document.getElementById('veh-model').value = editData.model;
+                document.getElementById('veh-color').value = editData.color || '';
+                document.getElementById('veh-vin').value = editData.vin || '';
+                document.getElementById('veh-owner').value = editData.ownerId;
+                document.getElementById('veh-patranie').value = editData.patranie || '';
+                document.getElementById('veh-cepan').value = editData.cepan || '';
+                document.getElementById('veh-nepoistene').checked = !!editData.nepoistene;
+                document.getElementById('veh-znamka').checked = !!editData.znamka;
+            } else {
+                document.getElementById('veh-form-title').innerText = "Registrovať vozidlo";
+                document.getElementById('veh-db-id').value = '';
+                document.querySelector('#vehicle-form-card form').reset();
+                generateVIN();
+            }
+            card.scrollIntoView({ behavior: 'smooth' });
+        }
+        function hideVehicleForm() { document.getElementById('vehicle-form-card').classList.add('hidden'); }
+
+        async function saveVehicle(event) {
+            event.preventDefault();
+            const idVal = document.getElementById('veh-db-id').value;
+            const vehId = idVal ? idVal : 'VEH-' + Math.floor(100000 + Math.random() * 900000);
+            await window.fbSetDoc(window.fbDoc(window.db, "vehicles", vehId), {
+                spz: document.getElementById('veh-spz').value.trim().toUpperCase(),
+                model: document.getElementById('veh-model').value.trim(),
+                color: document.getElementById('veh-color').value.trim(),
+                vin: document.getElementById('veh-vin').value.trim().toUpperCase(),
+                ownerId: document.getElementById('veh-owner').value,
+                patranie: document.getElementById('veh-patranie').value,
+                cepan: document.getElementById('veh-cepan').value.trim(),
+                nepoistene: document.getElementById('veh-nepoistene').checked,
+                znamka: document.getElementById('veh-znamka').checked
+            });
+            hideVehicleForm();
+            if (currentVehicleDetailId) openVehicleDetail(currentVehicleDetailId);
+        }
+
+        function renderVehicles() {
+            const grid = document.getElementById('vehicles-grid');
+            if (!grid) return;
+            grid.innerHTML = vehicles.length === 0 ? `<div class="col-span-full text-center py-12 bg-white border rounded-xl"><p class="text-sm text-slate-600">Žiadne vozidlá.</p></div>` : vehicles.map(v => `
+                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-mono bg-slate-900 text-white px-2.5 py-0.5 rounded font-bold">${v.spz}</span>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-900 mb-1">${v.model}</h3>
+                        <p class="text-xs text-slate-500 mb-3">Farba: ${v.color || 'Neuvedená'}</p>
+                    </div>
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                        <button onclick="openVehicleDetail('${v.id}')" class="text-xs font-medium text-slate-900 hover:underline">Zobraziť detail</button>
+                        <div class="flex gap-2">
+                            <button onclick="openCreateVehicleModal(${JSON.stringify(v).replace(/"/g, '&quot;')})" class="text-xs font-medium text-slate-700 hover:underline">Upraviť</button>
+                            <button onclick="deleteVehicle('${v.id}')" class="text-xs font-medium text-red-600 hover:underline">Zmazať</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function deleteVehicle(id) { if (confirm("Naozaj vymazať vozidlo?")) window.fbDeleteDoc(window.fbDoc(window.db, "vehicles", id)); }
+
+        function openVehicleDetail(id) {
+            currentVehicleDetailId = id;
+            const v = allVehicles.find(item => item.id === id);
+            if (!v) return;
+            const owner = allCharacters.find(c => c.id === v.ownerId);
+
+            document.getElementById('tab-characters').classList.add('hidden');
+            document.getElementById('tab-vehicles-manage').classList.add('hidden');
+            document.getElementById('vehicle-form-card').classList.add('hidden');
+            document.getElementById('vehicle-detail-view').classList.remove('hidden');
+
+            document.getElementById('veh-detail-spz-badge').innerText = v.spz;
+            document.getElementById('veh-detail-model').innerText = v.model;
+            document.getElementById('veh-detail-vin').innerText = v.vin || 'Neuvedené';
+            document.getElementById('veh-detail-color').innerText = v.color || 'Neuvedená';
+            
+            document.getElementById('veh-detail-owner-info').innerText = owner ? `${owner.first} ${owner.last} (nar. ${owner.dob})` : 'Neznámy majiteľ';
+
+            const alerts = document.getElementById('vehicle-alerts-container');
+            alerts.innerHTML = '';
+            if (v.patranie) alerts.innerHTML += `<div class="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">PÁTRANIE: ${v.patranie}</div>`;
+            if (v.cepan) alerts.innerHTML += `<div class="bg-white text-slate-900 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg">CEPAN: ${v.cepan}</div>`;
+            if (v.nepoistene) alerts.innerHTML += `<div class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-lg">NEPOISTENÉ</div>`;
+            if (v.znamka) alerts.innerHTML += `<div class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">DIAĽNIČNÁ ZNÁMKA</div>`;
+        }
+
+        function backFromVehicleDetail() { currentVehicleDetailId = null; document.getElementById('vehicle-detail-view').classList.add('hidden'); switchTab('vehicles-manage'); }
+        function editCurrentVehicle() { const v = allVehicles.find(item => item.id === currentVehicleDetailId); if (v) { document.getElementById('vehicle-detail-view').classList.add('hidden'); document.getElementById('tab-vehicles-manage').classList.remove('hidden'); openCreateVehicleModal(v); } }
+        async function deleteCurrentVehicle() { if (confirm("Naozaj vymazať vozidlo?")) { await window.fbDeleteDoc(window.fbDoc(window.db, "vehicles", currentVehicleDetailId)); backFromVehicleDetail(); } }
+
+        function updateVehicleOwnerDropdown() {
+            const select = document.getElementById('veh-owner');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Vyberte majiteľa --</option>';
+            characters.forEach(c => select.innerHTML += `<option value="${c.id}">${c.first} ${c.last}</option>`);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="sk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RP Systems // Overlay Chat & Admin</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-card: rgba(17, 19, 24, 0.95);
+            --bg-input: rgba(23, 26, 33, 0.9);
+            --border-color: rgba(35, 39, 49, 0.8);
+            --border-focus: #4f5b73;
+            --text-main: #f5f6f7;
+            --text-muted: #7e879a;
+            --accent: #3b82f6;
+            
+            --cls-chat: #9da5b4;
+            --cls-me: #ff4d4d;
+            --cls-ooc: #ff9900;
+            --cls-do: #3399ff;
+            --cls-doc: #ffcc00;
+            --cls-try: #2ecc71;
+            --cls-gmedo: #bf55ec;
+            --cls-izs: #00ffff;
+            --cls-error: #ff4d4d;
+            --cls-success: #2ecc71;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; background: transparent; color: var(--text-main); font-family: sans-serif; overflow: hidden; }
+        body { display: flex; flex-direction: column; height: 100dvh; padding: 8px; gap: 8px; }
+
+        .top-bar { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border-color); -webkit-app-region: drag; flex-shrink: 0; }
+        .top-bar button, .top-bar a, .top-bar div { -webkit-app-region: no-drag; }
+
+        #chat { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+        #chat::-webkit-scrollbar { width: 4px; }
+        #chat::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+
+        .msg { padding: 8px 12px; border-radius: 6px; background: rgba(17, 19, 24, 0.85); border-left: 3px solid var(--text-muted); font-size: 0.88rem; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; word-break: break-all; }
+        .msg.highlighted { border: 2px solid #eab308 !important; box-shadow: 0 0 12px rgba(234, 179, 8, 0.6); }
+
+        .msg-badge { font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; color: #000; }
+        .msg.type-chat { border-color: var(--cls-chat); } .msg.type-chat .msg-badge { background: var(--cls-chat); }
+        .msg.type-me { border-color: var(--cls-me); } .msg.type-me .msg-badge { background: var(--cls-me); color: #fff; }
+        .msg.type-ooc { border-color: var(--cls-ooc); } .msg.type-ooc .msg-badge { background: var(--cls-ooc); color: #000; }
+        .msg.type-do { border-color: var(--cls-do); } .msg.type-do .msg-badge { background: var(--cls-do); color: #fff; }
+        .msg.type-doc { border-color: var(--cls-doc); } .msg.type-doc .msg-badge { background: var(--cls-doc); }
+        .msg.type-try { border-color: var(--cls-try); } .msg.type-try .msg-badge { background: var(--cls-try); color: #fff; }
+        .msg.type-gmedo { border-color: var(--cls-gmedo); } .msg.type-gmedo .msg-badge { background: var(--cls-gmedo); color: #fff; }
+        .msg.type-izs { border-color: var(--cls-izs); } .msg.type-izs .msg-badge { background: var(--cls-izs); color: #000; }
+
+        .input-area { display: flex; gap: 8px; flex-shrink: 0; background: rgba(17, 19, 24, 0.5); padding: 8px; border-radius: 10px; border: 1px solid var(--border-color); position: relative; }
+        #msg { flex: 1; padding: 10px 12px; background: rgba(23, 26, 33, 0.4); color: #fff; border: 1px solid rgba(35, 39, 49, 0.5); border-radius: 8px; outline: none; font-size: 0.9rem; }
+        
+        #mention-dropdown { position: absolute; bottom: 100%; left: 8px; background: #161920; border: 1px solid var(--border-color); border-radius: 8px; max-height: 150px; overflow-y: auto; width: 250px; display: none; z-index: 200; }
+        .mention-item { padding: 8px 12px; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .mention-item:hover { background: #252a35; }
+    </style>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+
+<body>
+
+    <!-- Prihlásenie / Žiadosť -->
+    <div id="authScreen" class="absolute inset-0 bg-[#08090c] flex flex-col justify-center items-center p-5 z-50">
+        <div class="bg-[#111318] border border-[#232731] p-6 rounded-xl max-w-md w-full text-center shadow-2xl">
+            <h3 class="text-white text-lg font-bold mb-2">RP Systems Overlay</h3>
+            <p id="authStatusText" class="text-xs text-slate-400 mb-4">Zadaj svoje Roblox meno pre odoslanie žiadosti o prístup.</p>
+            <input type="text" id="robloxInput" class="w-full p-2.5 bg-[#171a21] text-white border border-[#232731] rounded-lg outline-none mb-3 text-sm" placeholder="Roblox Username">
+            <button class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm transition" id="loginBtn">Odoslať žiadosť</button>
+        </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="adminModal" class="absolute inset-0 bg-black/90 flex flex-col justify-center items-center p-5 z-50 hidden">
+        <div class="bg-[#111318] border border-[#232731] p-5 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="text-white font-bold mb-2">Admin Panel – Správa žiadostí</h3>
+            <div id="adminUserList" class="space-y-2 my-4 text-xs">Načítavam používateľov...</div>
+            <button class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs transition" onclick="toggleAdminPanel(false)">Zavrieť</button>
+        </div>
+    </div>
+
+    <!-- Vrchná lišta chatu -->
+    <div class="top-bar">
+        <div class="brand text-xs font-bold">RP Chat Overlay</div>
+        <div class="flex gap-2 items-center relative">
+            <!-- Tlačidlo troch bodiek -->
+            <button class="w-7 h-7 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-bold flex items-center justify-center cursor-pointer transition" id="menuBtn" onclick="toggleDropdownMenu(event)" title="Menu">
+                <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+            </button>
+            
+            <!-- Dropdown Menu pod tromi bodkami -->
+            <div id="dropdownMenu" class="absolute right-0 top-full mt-2 w-36 bg-[#161920] border border-[#232731] rounded-lg shadow-xl overflow-hidden hidden z-50 text-xs">
+                <button id="menuAdminBtn" class="w-full text-left px-3 py-2 text-slate-200 hover:bg-[#252a35] transition hidden" onclick="openAdminFromMenu()">Admin panel</button>
+                <button class="w-full text-left px-3 py-2 text-red-400 hover:bg-[#252a35] transition" onclick="logoutUser()">Odhlásiť sa</button>
+            </div>
+
+            <button class="w-6 h-6 bg-red-500/20 text-red-400 rounded font-bold flex items-center justify-center cursor-pointer" id="closeBtn">✕</button>
+        </div>
+    </div>
+
+    <div id="chat"></div>
+
+    <!-- Spodná lišta -->
+    <div class="input-area">
+        <div id="mention-dropdown"></div>
+        <input id="msg" placeholder="Napíš správu alebo príkaz (/me, /ooc, /do, /try, /gmedo, /izs, /identita, /lustrovat)..." autocomplete="off">
+        <button class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold" id="sendBtn">Odoslať</button>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBuxsqmHcgsGb3zvRIX6TvuRQ9Tc9JQVc8",
+            authDomain: "rp-chat-slovakcity.firebaseapp.com",
+            databaseURL: "https://rp-chat-slovakcity-default-rtdb.europe-west1.firebasedatabase.app/",
+            projectId: "rp-chat-slovakcity"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let robloxUsername = localStorage.getItem("rp_roblox_username") || "";
+        let userUid = robloxUsername ? "rbx_" + robloxUsername.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+        let isAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
+
+        let deviceId = localStorage.getItem("rp_device_id");
+        if (!deviceId) {
+            deviceId = 'dev_' + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem("rp_device_id", deviceId);
+        }
+
+        const mentionAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+
+        // Automatická kontrola stavu účtu hneď po zapnutí, ak je meno uložené
+        if (robloxUsername) {
+            document.getElementById("robloxInput").value = robloxUsername;
+            verifyAndListenUser(userUid, robloxUsername);
+        }
+
+        document.getElementById("loginBtn").addEventListener("click", async () => {
+            const username = document.getElementById("robloxInput").value.trim();
+            if (!username) return alert("Zadaj meno!");
+            robloxUsername = username;
+            localStorage.setItem("rp_roblox_username", username);
+            userUid = "rbx_" + username.toLowerCase().replace(/[^a-z0-9]/g, "");
+            isAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
+
+            const userRef = db.ref(`users/${userUid}`);
+            const snap = await userRef.once('value');
+            
+            if (snap.exists()) {
+                let userData = snap.val();
+                if (userData.deviceId && userData.deviceId !== deviceId && !isAdmin) {
+                    alert("Toto meno je už zaregistrované na inom zariadení!");
+                    return;
+                }
+                if (isAdmin) userData.status = "approved";
+                await userRef.update({ deviceId, status: userData.status || "pending" });
+            } else {
+                await userRef.set({
+                    username,
+                    status: isAdmin ? "approved" : "pending",
+                    isAdmin,
+                    deviceId,
+                    requestedAt: Date.now()
+                });
+            }
+            verifyAndListenUser(userUid, username);
+        });
+
+        function verifyAndListenUser(uid, username) {
+            db.ref(`users/${uid}`).on("value", (snap) => {
+                if (!snap.exists()) return;
+                let userData = snap.val();
+                
+                if (userData.status === "approved" || (window.ADMIN_UIDS && window.ADMIN_UIDS.includes(uid))) {
+                    document.getElementById("authScreen").style.display = "none";
+                    if (window.ADMIN_UIDS && window.ADMIN_UIDS.includes(uid)) {
+                        document.getElementById("menuAdminBtn").style.display = "block";
+                    }
+                    initChat();
+                } else {
+                    document.getElementById("authScreen").style.display = "flex";
+                    document.getElementById("authStatusText").innerText = `Účet pre "${username}" čaká na schválenie administrátorom.`;
+                }
+            });
+
+            db.ref("users").on("value", (snap) => {
+                const val = snap.val();
+                onlineUsers = val ? Object.values(val).filter(u => u.status === "approved").map(u => u.username) : [];
+                renderAdminUserList(val);
+            });
+        }
+
+        let onlineUsers = [];
+
+        function initChat() {
+            db.ref("global_messages").on("child_added", (snap) => renderMessage(snap.key, snap.val()));
+        }
+
+        function renderAdminUserList(usersObj) {
+            const listContainer = document.getElementById("adminUserList");
+            if (!usersObj) {
+                listContainer.innerHTML = "<div class='text-slate-400 text-center'>Žiadni používatelia v databáze.</div>";
+                return;
+            }
+
+            let html = "";
+            for (let uid in usersObj) {
+                let u = usersObj[uid];
+                let isApproved = u.status === "approved";
+                html += `
+                    <div class="flex items-center justify-between bg-[#171a21] p-2.5 rounded-lg border border-[#232731]">
+                        <div>
+                            <span class="font-bold text-white">${u.username}</span>
+                            <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded ${isApproved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">
+                                ${isApproved ? 'Schválený' : 'Čaká na schválenie'}
+                            </span>
+                        </div>
+                        <div>
+                            ${!isApproved ? `<button onclick="approveUser('${uid}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] transition">Schváliť</button>` : `<button onclick="revokeUser('${uid}')" class="px-2.5 py-1 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white font-bold rounded text-[10px] transition">Zablokovať</button>`}
+                        </div>
+                    </div>
+                `;
+            }
+            listContainer.innerHTML = html;
+        }
+
+        window.approveUser = (uid) => {
+            db.ref(`users/${uid}`).update({ status: "approved" });
+        };
+
+        window.revokeUser = (uid) => {
+            db.ref(`users/${uid}`).update({ status: "pending" });
+        };
+
+        // Ovládanie menu s tromi bodkami
+        function toggleDropdownMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById("dropdownMenu");
+            menu.classList.toggle("hidden");
+        }
+
+        // Zatvorenie menu pri kliknutí hocikde inam
+        window.addEventListener("click", () => {
+            document.getElementById("dropdownMenu").classList.add("hidden");
+        });
+
+        function openAdminFromMenu() {
+            document.getElementById("dropdownMenu").classList.add("hidden");
+            toggleAdminPanel(true);
+        }
+
+        function logoutUser() {
+            localStorage.removeItem("rp_roblox_username");
+            location.reload();
+        }
+
+        const msgInput = document.getElementById("msg");
+        const mentionDropdown = document.getElementById("mention-dropdown");
+
+        msgInput.addEventListener("input", () => {
+            const val = msgInput.value;
+            const parts = val.split(" ");
+            const lastWord = parts[parts.length - 1];
+            const lowerCmd = parts[0].toLowerCase();
+
+            if (["/do", "/gmedo", "/ooc"].includes(lowerCmd) && lastWord.startsWith("@")) {
+                const query = lastWord.substring(1).toLowerCase();
+                const filtered = onlineUsers.filter(u => u.toLowerCase().includes(query));
+                if (filtered.length > 0) {
+                    mentionDropdown.innerHTML = filtered.map(u => `<div class="mention-item" onclick="selectMention('${u}')">@${u}</div>`).join('');
+                    mentionDropdown.style.display = "block";
+                    return;
+                }
+            }
+            mentionDropdown.style.display = "none";
+        });
+
+        window.selectMention = (username) => {
+            let parts = msgInput.value.split(" ");
+            parts[parts.length - 1] = "@" + username + " ";
+            msgInput.value = parts.join(" ");
+            mentionDropdown.style.display = "none";
+            msgInput.focus();
+        };
+
+        function sendMsg() {
+            let text = msgInput.value.trim();
+            if (!text) return;
+            let lowerText = text.toLowerCase();
+
+            if (lowerText.startsWith("/identita")) {
+                ipcRenderer.send('open-identita-window');
+                msgInput.value = "";
+                return;
+            }
+
+            if (lowerText.startsWith("/lustrovat")) {
+                ipcRenderer.send('open-lustracia-window');
+                msgInput.value = "";
+                return;
+            }
+
+            if (lowerText.startsWith("/doc")) {
+                let num = parseInt(text.substring(4).trim(), 10);
+                if (!isNaN(num) && num > 0) {
+                    msgInput.value = "";
+                    sendCountdown(robloxUsername, num);
+                    return;
+                }
+            }
+
+            let payload = { sender: robloxUsername, text: text, timestamp: Date.now() };
+            if (lowerText.startsWith("/try")) payload.success = Math.random() < 0.5;
+
+            db.ref("global_messages").push(payload);
+            msgInput.value = "";
+            mentionDropdown.style.display = "none";
+        }
+
+        function sendCountdown(username, currentNum) {
+            if (currentNum < 1) return;
+            db.ref("global_messages").push({ sender: username, text: `${currentNum}`, timestamp: Date.now() });
+            setTimeout(() => sendCountdown(username, currentNum - 1), 1000);
+        }
+
+        document.getElementById("sendBtn").addEventListener("click", sendMsg);
+        msgInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMsg(); });
+        document.getElementById("closeBtn").addEventListener("click", () => window.close());
+
+        function renderMessage(key, data) {
+            const chat = document.getElementById("chat");
+            let text = data.text.trim();
+            let lowerText = text.toLowerCase();
+            let badgeText = "CHAT", typeClass = "type-chat", formattedContent = text;
+
+            if (lowerText.startsWith("/me")) { badgeText = "ME"; typeClass = "type-me"; formattedContent = text.substring(3).trim(); }
+            else if (lowerText.startsWith("/ooc")) { badgeText = "OOC"; typeClass = "type-ooc"; formattedContent = text.substring(4).trim(); }
+            else if (lowerText.startsWith("/do")) { badgeText = "DO"; typeClass = "type-do"; formattedContent = text.substring(3).trim(); }
+            else if (lowerText.startsWith("/doc") || /^\d+$/.test(text)) { badgeText = "DOC"; typeClass = "type-doc"; formattedContent = lowerText.startsWith("/doc") ? text.substring(4).trim() : text; }
+            else if (lowerText.startsWith("/try")) { badgeText = "TRY"; typeClass = "type-try"; formattedContent = text.substring(4).trim() + (data.success ? " | <span style='color:var(--cls-try)'>Áno</span>" : " | <span style='color:var(--cls-error)'>Nie</span>"); }
+            else if (lowerText.startsWith("/gmedo")) { badgeText = "GMEDO"; typeClass = "type-gmedo"; formattedContent = text.substring(6).trim(); }
+            else if (lowerText.startsWith("/izs")) { badgeText = "IZS"; typeClass = "type-izs"; formattedContent = text.substring(4).trim(); }
+
+            let isMentioned = formattedContent.includes("@" + robloxUsername);
+            if (isMentioned) { mentionAudio.play().catch(() => {}); }
+
+            chat.innerHTML += `
+                <div class="msg ${typeClass} ${isMentioned ? 'highlighted' : ''}">
+                    <span class="msg-badge">${badgeText}</span>
+                    <span class="font-bold">${data.sender}:</span>
+                    <span>${formattedContent}</span>
+                </div>
+            `;
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        window.toggleAdminPanel = (show) => {
+            document.getElementById("adminModal").style.display = show ? "flex" : "none";
+        };
+    </script>
+</body>
+</html>

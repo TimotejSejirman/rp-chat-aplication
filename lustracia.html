@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PZSR Mobilný Terminal – Moto g06</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDINzW31aIhySu4-yFHaz2t9s9hNc19xH0",
+            authDomain: "chars-info.firebaseapp.com",
+            projectId: "chars-info",
+            storageBucket: "chars-info.firebasestorage.app",
+            messagingSenderId: "496539316759",
+            appId: "1:496539316759:web:d06ced67a25398e76b2252"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.fbCollection = collection;
+        window.fbOnSnapshot = onSnapshot;
+        window.initFirebaseListeners();
+    </script>
+
+    <style>
+        html, body { background: transparent; overflow: hidden; margin: 0; padding: 0; height: 100%; user-select: none; }
+        .phone-frame { background: #111827; border: 4px solid #070707; border-radius: 36px; box-shadow: none; display: flex; flex-direction: column; height: 100%; width: 100%; overflow: hidden; position: relative; }
+        .drag-header { -webkit-app-region: drag; }
+        .notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 50px; height: 18px; background-color: #111827; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; z-index: 50; display: flex; justify-content: center; align-items: center; }
+        .camera-lens { width: 8px; height: 8px; background: #000; border-radius: 50%; border: 1px solid #374151; }
+        .nav-bar { background-color: #030712; height: 44px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; -webkit-app-region: no-drag; }
+        .nav-btn { color: #9ca3af; font-size: 0.95rem; cursor: pointer; padding: 6px 16px; border-radius: 8px; -webkit-app-region: no-drag; }
+        .nav-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="p-0">
+    <div class="phone-frame">
+        <div class="notch"><div class="camera-lens"></div></div>
+        
+        <div class="drag-header pt-2 px-5 pb-1.5 flex justify-between items-center text-[10px] text-slate-400 bg-white border-b z-10 cursor-move">
+            <span class="font-bold text-slate-700">19:58</span>
+            <span>LTE 84%</span>
+        </div>
+
+        <!-- PZSR Login Modal -->
+        <div id="pzsr-login-modal" class="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+            <div class="bg-white p-5 rounded-2xl shadow-xl w-full max-w-xs text-center">
+                <div class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-50 text-amber-600 mb-2">
+                    <i class="fa-solid fa-lock text-base"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-900 mb-1">Overenie PZSR</h3>
+                <form onsubmit="handlePzsrLogin(event)">
+                    <input type="password" id="pzsr-password-input" required class="w-full px-3 py-2 bg-slate-50 border rounded-lg text-xs mb-3 text-center" placeholder="PZSR heslo">
+                    <div id="pzsr-login-error" class="text-red-500 text-[10px] mb-2 hidden">Nesprávne heslo!</div>
+                    <button type="submit" class="w-full bg-slate-900 text-white text-xs font-bold py-2 rounded-lg">Vstúpiť</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Obsah lustrácie -->
+        <div class="flex-1 bg-slate-50 overflow-y-auto p-3 flex flex-col space-y-3">
+            
+            <!-- POLICE LOOK DETAIL VIEW -->
+            <div id="police-detail-view" class="hidden space-y-3">
+                <button onclick="backToSearch()" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                    <i class="fa-solid fa-arrow-left"></i> Späť na vyhľadávanie
+                </button>
+                <div id="police-detail-content" class="space-y-3"></div>
+            </div>
+
+            <!-- Štandardný obsah vyhľadávania -->
+            <div id="search-main-container" class="space-y-3">
+                <div class="bg-white border p-3 rounded-xl shadow-sm">
+                    <span class="text-xs font-bold text-slate-900 flex items-center gap-1.5 mb-2">
+                        <i class="fa-solid fa-shield-halved text-blue-600"></i> PZSR Register
+                    </span>
+                    <div class="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg text-center text-xs font-semibold">
+                        <button onclick="switchLustraciaType('osoba')" id="lust-tab-osoba" class="py-1.5 bg-white text-slate-900 rounded-md shadow-sm">Osoba</button>
+                        <button onclick="switchLustraciaType('vozidlo')" id="lust-tab-vozidlo" class="py-1.5 text-slate-500 hover:text-slate-900">Vozidlo</button>
+                    </div>
+                </div>
+
+                <!-- Formulár pre osoby: Meno, Priezvisko, Dátum narodenia -->
+                <form id="lust-form-osoba" onsubmit="handleLustraciaSearch(event)" class="bg-white border p-3 rounded-xl shadow-sm space-y-2">
+                    <input type="text" id="lust-first" class="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs" placeholder="Meno osoby...">
+                    <input type="text" id="lust-last" class="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs" placeholder="Priezvisko osoby...">
+                    <input type="date" id="lust-dob" class="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs text-slate-600">
+                    <button type="submit" class="w-full py-2 bg-slate-900 text-white font-bold text-xs rounded-lg">Lustrovať osobu</button>
+                </form>
+
+                <form id="lust-form-vozidlo" onsubmit="handleVehicleLustraciaSearch(event)" class="bg-white border p-3 rounded-xl shadow-sm space-y-2 hidden">
+                    <input type="text" id="lust-spz-input" class="w-full px-3 py-1.5 bg-slate-50 border rounded-lg text-xs uppercase" placeholder="Zadajte EČV alebo VIN...">
+                    <button type="submit" class="w-full py-2 bg-slate-900 text-white font-bold text-xs rounded-lg">Lustrovať vozidlo</button>
+                </form>
+
+                <div id="lustracia-results" class="space-y-2">
+                    <div class="text-center py-8 text-slate-400 text-xs border border-dashed rounded-xl bg-white">Zadajte údaje pre vyhľadávanie.</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Android Navigačná lišta -->
+        <div class="nav-bar">
+            <div class="nav-btn" onclick="window.close()" title="Zavrieť"><i class="fa-solid fa-bars"></i></div>
+            <div class="nav-btn" onclick="window.close()" title="Zavrieť"><i class="fa-regular fa-square"></i></div>
+            <div class="nav-btn" onclick="window.close()" title="Zavrieť"><i class="fa-solid fa-chevron-left"></i></div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        let allCharacters = [], allVehicles = [];
+
+        window.initFirebaseListeners = function() {
+            if (!window.db) return;
+            window.fbOnSnapshot(window.fbCollection(window.db, "characters"), (snapshot) => {
+                allCharacters = [];
+                snapshot.forEach((doc) => allCharacters.push({ id: doc.id, ...doc.data() }));
+            });
+            window.fbOnSnapshot(window.fbCollection(window.db, "vehicles"), (snapshot) => {
+                allVehicles = [];
+                snapshot.forEach((doc) => allVehicles.push({ id: doc.id, ...doc.data() }));
+            });
+        };
+
+        function handlePzsrLogin(event) {
+            event.preventDefault();
+            const val = document.getElementById('pzsr-password-input').value;
+            const PZSR_PASSWORD = window.APP_CONFIG ? window.APP_CONFIG.PZSR_PASSWORD : "ZvolenyRegistrat";
+            if (val === PZSR_PASSWORD) document.getElementById('pzsr-login-modal').classList.add('hidden');
+            else document.getElementById('pzsr-login-error').classList.remove('hidden');
+        }
+
+        function switchLustraciaType(type) {
+            const formOsoba = document.getElementById('lust-form-osoba');
+            const formVozidlo = document.getElementById('lust-form-vozidlo');
+            const btnOsoba = document.getElementById('lust-tab-osoba');
+            const btnVozidlo = document.getElementById('lust-tab-vozidlo');
+
+            document.getElementById('police-detail-view').classList.add('hidden');
+            document.getElementById('search-main-container').classList.remove('hidden');
+
+            if (type === 'osoba') {
+                formOsoba.classList.remove('hidden');
+                formVozidlo.classList.add('hidden');
+                btnOsoba.className = "py-1.5 bg-white text-slate-900 rounded-md shadow-sm";
+                btnVozidlo.className = "py-1.5 text-slate-500 hover:text-slate-900";
+            } else {
+                formOsoba.classList.add('hidden');
+                formVozidlo.classList.remove('hidden');
+                btnVozidlo.className = "py-1.5 bg-white text-slate-900 rounded-md shadow-sm";
+                btnOsoba.className = "py-1.5 text-slate-500 hover:text-slate-900";
+            }
+        }
+
+        function handleLustraciaSearch(event) {
+            event.preventDefault();
+            const firstQ = document.getElementById('lust-first').value.trim().toLowerCase();
+            const lastQ = document.getElementById('lust-last').value.trim().toLowerCase();
+            const dobQ = document.getElementById('lust-dob').value.trim();
+            const resultsContainer = document.getElementById('lustracia-results');
+            resultsContainer.innerHTML = '';
+
+            const matched = allCharacters.filter(c => {
+                let match = true;
+                if (firstQ && !c.first.toLowerCase().includes(firstQ)) match = false;
+                if (lastQ && !c.last.toLowerCase().includes(lastQ)) match = false;
+                if (dobQ && c.dob !== dobQ) match = false;
+                return match;
+            });
+
+            if (matched.length === 0) {
+                resultsContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-400 bg-white border rounded-xl">Žiadne výsledky.</div>`;
+                return;
+            }
+
+            matched.forEach(c => {
+                let badgesHtml = '';
+                if (c.patranie) badgesHtml += `<span class="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded ml-1">PÁTRANIE</span>`;
+                if (c.cepan) badgesHtml += `<span class="bg-white text-slate-900 border border-slate-300 text-[9px] font-bold px-1.5 py-0.5 rounded ml-1">CEPAN</span>`;
+
+                resultsContainer.innerHTML += `
+                    <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-slate-900">${c.first} ${c.last}</h4>
+                            <div>${badgesHtml}</div>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-medium">Dátum narodenia: <span class="text-slate-900 font-bold">${c.dob}</span></p>
+                        <p class="text-[10px] text-slate-400">Občianstvo: ${c.citizenship}</p>
+                        <button onclick="showPoliceCharacterDetail('${c.id}')" class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition">Zobraziť detail</button>
+                    </div>
+                `;
+            });
+        }
+
+        function handleVehicleLustraciaSearch(event) {
+            event.preventDefault();
+            const spzQ = document.getElementById('lust-spz-input').value.trim().toUpperCase();
+            const resultsContainer = document.getElementById('lustracia-results');
+            resultsContainer.innerHTML = '';
+
+            const matched = allVehicles.filter(v => v.spz.toUpperCase().includes(spzQ));
+            if (matched.length === 0) {
+                resultsContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-400 bg-white border rounded-xl">Žiadne vozidlá.</div>`;
+                return;
+            }
+
+            matched.forEach(v => {
+                let vBadges = '';
+                if (v.patranie) vBadges += `<span class="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded ml-1">PÁTRANIE</span>`;
+                if (v.cepan) vBadges += `<span class="bg-white text-slate-900 border border-slate-300 text-[9px] font-bold px-1.5 py-0.5 rounded ml-1">CEPAN</span>`;
+                if (v.nepoistene) vBadges += `<span class="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded ml-1">NEPOISTENÉ</span>`;
+
+                resultsContainer.innerHTML += `
+                    <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-mono bg-slate-900 text-white px-2 py-0.5 rounded font-bold">${v.spz}</span>
+                            <div>${vBadges}</div>
+                        </div>
+                        <h4 class="text-xs font-bold text-slate-900 mt-1">${v.model} (${v.color || 'Neznáma farba'})</h4>
+                        <button onclick="showPoliceVehicleDetail('${v.id}')" class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition">Zobraziť detail</button>
+                    </div>
+                `;
+            });
+        }
+
+        function showPoliceCharacterDetail(charId) {
+            const c = allCharacters.find(item => item.id === charId);
+            if (!c) return;
+
+            document.getElementById('search-main-container').classList.add('hidden');
+            document.getElementById('police-detail-view').classList.remove('hidden');
+
+            const ownerVehicles = allVehicles.filter(v => v.ownerId === c.id);
+            let vehiclesHtml = ownerVehicles.length > 0 ? ownerVehicles.map(v => `
+                <div class="bg-slate-100 p-2 rounded-lg flex items-center justify-between text-xs">
+                    <div><span class="font-mono font-bold">${v.spz}</span> – ${v.model}</div>
+                    <button onclick="showPoliceVehicleDetail('${v.id}')" class="px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold">Detail</button>
+                </div>
+            `).join('') : '<p class="text-slate-400 text-xs">Žiadne evidované vozidlá.</p>';
+
+            let alertsHtml = '';
+            if (c.patranie) alertsHtml += `<div class="bg-red-600 text-white text-xs font-bold p-2 rounded-lg">PÁTRANIE: ${c.patranie}</div>`;
+            if (c.cepan) alertsHtml += `<div class="bg-white border border-slate-300 text-slate-900 text-xs font-bold p-2 rounded-lg">CEPAN: ${c.cepan}</div>`;
+
+            document.getElementById('police-detail-content').innerHTML = `
+                <div class="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                    <div class="border-b pb-2">
+                        <span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">${c.id}</span>
+                        <h3 class="text-base font-bold text-slate-900 mt-1">${c.first} ${c.last}</h3>
+                    </div>
+                    ${alertsHtml}
+                    <div class="text-xs space-y-1 text-slate-600">
+                        <p><strong>Dátum narodenia:</strong> <span class="text-slate-900">${c.dob}</span></p>
+                        <p><strong>Občianstvo:</strong> <span class="text-slate-900">${c.citizenship}</span></p>
+                        <p><strong>Pohlavie:</strong> <span class="text-slate-900">${c.sex}</span></p>
+                    </div>
+                    <div class="pt-2 border-t space-y-2">
+                        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Vozidlá vo vlastníctve:</h4>
+                        <div class="space-y-1">${vehiclesHtml}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showPoliceVehicleDetail(vehId) {
+            const v = allVehicles.find(item => item.id === vehId);
+            if (!v) return;
+            const owner = allCharacters.find(c => c.id === v.ownerId);
+
+            document.getElementById('search-main-container').classList.add('hidden');
+            document.getElementById('police-detail-view').classList.remove('hidden');
+
+            let vAlerts = '';
+            if (v.patranie) vAlerts += `<div class="bg-red-600 text-white text-xs font-bold p-2 rounded-lg">PÁTRANIE: ${v.patranie}</div>`;
+            if (v.cepan) vAlerts += `<div class="bg-white border border-slate-300 text-slate-900 text-xs font-bold p-2 rounded-lg">CEPAN: ${v.cepan}</div>`;
+            if (v.nepoistene) vAlerts += `<div class="bg-amber-100 text-amber-800 text-xs font-bold p-2 rounded-lg">NEPOISTENÉ VOZIDLO</div>`;
+            if (v.znamka) vAlerts += `<div class="bg-emerald-600 text-white text-xs font-bold p-2 rounded-lg">PLATNÁ DIAĽNIČNÁ ZNÁMKA</div>`;
+
+            let ownerHtml = owner ? `
+                <div class="bg-slate-100 p-2.5 rounded-lg flex items-center justify-between text-xs">
+                    <div><strong>${owner.first} ${owner.last}</strong> (nar. ${owner.dob})</div>
+                    <button onclick="showPoliceCharacterDetail('${owner.id}')" class="px-2.5 py-1 bg-slate-900 text-white rounded text-[10px] font-bold">Detail osoby</button>
+                </div>
+            ` : '<p class="text-slate-400 text-xs">Neznámy majiteľ</p>';
+
+            document.getElementById('police-detail-content').innerHTML = `
+                <div class="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                    <div class="border-b pb-2 flex items-center justify-between">
+                        <span class="font-mono text-sm font-bold bg-slate-900 text-white px-2.5 py-1 rounded">${v.spz}</span>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-900">${v.model}</h3>
+                    ${vAlerts}
+                    <div class="text-xs space-y-1 text-slate-600">
+                        <p><strong>Farba:</strong> <span class="text-slate-900">${v.color || 'Neznáma'}</span></p>
+                        <p><strong>VIN:</strong> <span class="font-mono text-slate-900">${v.vin || 'Neuvedené'}</span></p>
+                    </div>
+                    <div class="pt-2 border-t space-y-2">
+                        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Majiteľ vozidla:</h4>
+                        ${ownerHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function backToSearch() {
+            document.getElementById('police-detail-view').classList.add('hidden');
+            document.getElementById('search-main-container').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
