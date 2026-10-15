@@ -1,6 +1,10 @@
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
+// Nastavenie logovania pre autoUpdater (výpisy priamo do konzoly)
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'info';
+
 let mainWindow;
 
 function createWindow() {
@@ -23,6 +27,36 @@ function createWindow() {
   // Automatická kontrola aktualizácií
   autoUpdater.checkForUpdatesAndNotify();
 }
+
+// Sledovanie priebehu aktualizácie cez logy
+autoUpdater.on('checking-for-update', () => {
+  console.log('[Updater] Kontrolujem aktualizácie na GitHube...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('[Updater] Našla sa nová verzia aplikácie: ' + info.version);
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('[Updater] Žiadna nová aktualizácia nie je k dispozícii.');
+});
+
+autoUpdater.on('error', (err) => {
+  console.log('[Updater] Nastala chyba pri aktualizácii: ', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  let logMessage = "[Updater] Rýchlosť stiahnutia: " + progressObj.bytesPerSecond;
+  logMessage = logMessage + ' - Sťahuje sa ' + progressObj.percent + '%';
+  logMessage = logMessage + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  console.log(logMessage);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('[Updater] Aktualizácia úspešne stiahnutá. Aplikácia sa čoskoro reštartuje...');
+  // Automaticky nainštaluje aktualizáciu a reštartuje aplikáciu
+  autoUpdater.quitAndInstall();
+});
 
 app.whenReady().then(() => {
   createWindow();
@@ -51,7 +85,7 @@ app.whenReady().then(() => {
     let lustraciaWin = new BrowserWindow({
       width: 340,
       height: 680,
-      x: width - 360, // Pravý dolný roh s malým okrajom
+      x: width - 360,
       y: height - 680,
       frame: false,
       transparent: true,
@@ -66,7 +100,7 @@ app.whenReady().then(() => {
     lustraciaWin.loadFile('lustracia.html');
   });
 
-  // Pridaj tento IPC listener do svojho main.js:
+  // Otvorenie admin okna
   ipcMain.on('open-admin-window', () => {
     let adminWin = new BrowserWindow({
       width: 600,
