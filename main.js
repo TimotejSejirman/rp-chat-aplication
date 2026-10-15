@@ -1,9 +1,12 @@
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
-// Nastavenie logovania pre autoUpdater (výpisy priamo do konzoly)
 autoUpdater.logger = require('electron-log');
 autoUpdater.logger.transports.file.level = 'info';
+
+autoUpdater.requestHeaders = {
+  Authorization: `token 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`
+};
 
 let mainWindow;
 
