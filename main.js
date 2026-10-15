@@ -4,10 +4,6 @@ const { autoUpdater } = require('electron-updater');
 autoUpdater.logger = require('electron-log');
 autoUpdater.logger.transports.file.level = 'info';
 
-autoUpdater.requestHeaders = {
-  Authorization: `token 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`
-};
-
 let mainWindow;
 
 function createWindow() {
