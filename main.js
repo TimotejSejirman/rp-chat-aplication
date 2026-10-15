@@ -65,6 +65,22 @@ app.whenReady().then(() => {
     lustraciaWin.setAlwaysOnTop(true, 'screen-saver');
     lustraciaWin.loadFile('lustracia.html');
   });
+
+  // Pridaj tento IPC listener do svojho main.js:
+  ipcMain.on('open-admin-window', () => {
+    let adminWin = new BrowserWindow({
+      width: 600,
+      height: 500,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      },
+      autoHideMenuBar: true,
+      title: "Admin Panel"
+    });
+
+    adminWin.loadFile('admin.html');
+  });
 });
 
 app.on('window-all-closed', () => {

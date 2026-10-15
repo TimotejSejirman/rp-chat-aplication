@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="sk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RP Systems - Správa používateľov</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #0b0d12; color: #f5f6f7; font-family: sans-serif; margin: 0; padding: 16px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+    </style>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+
+<body>
+
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-sm font-bold tracking-wide uppercase text-slate-300">Správa používateľov</h2>
+        <button onclick="window.close()" class="w-6 h-6 bg-red-500/20 text-red-400 rounded flex items-center justify-center text-xs hover:bg-red-500 hover:text-white transition">✕</button>
+    </div>
+
+    <!-- Hlavný kontajner rozdelený na dve sekcie -->
+    <div class="flex-1 flex flex-col gap-4 overflow-hidden">
+        
+        <!-- Sekcia: Čakajúci používatelia -->
+        <div class="flex-1 flex flex-col bg-[#111318] border border-[#232731] rounded-xl p-3 overflow-hidden">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-clock"></i> Čakajúci na schválenie (<span id="pendingCount">0</span>)
+            </h3>
+            <div id="pendingList" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <div class="text-slate-500 text-xs text-center py-2">Načítavam...</div>
+            </div>
+        </div>
+
+        <!-- Sekcia: Schválení používatelia -->
+        <div class="flex-1 flex flex-col bg-[#111318] border border-[#232731] rounded-xl p-3 overflow-hidden">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-check-circle"></i> Schválení používatelia (<span id="approvedCount">0</span>)
+            </h3>
+            <div id="approvedList" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <div class="text-slate-500 text-xs text-center py-2">Načítavam...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBuxsqmHcgsGb3zvRIX6TvuRQ9Tc9JQVc8",
+            authDomain: "rp-chat-slovakcity.firebaseapp.com",
+            databaseURL: "https://rp-chat-slovakcity-default-rtdb.europe-west1.firebasedatabase.app/",
+            projectId: "rp-chat-slovakcity"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Počúvanie zmien v databáze používateľov
+        db.ref("users").on("value", (snap) => {
+            const usersObj = snap.val();
+            renderUsers(usersObj);
+        });
+
+        function renderUsers(usersObj) {
+            const pendingContainer = document.getElementById("pendingList");
+            const approvedContainer = document.getElementById("approvedList");
+            
+            const pendingCountEl = document.getElementById("pendingCount");
+            const approvedCountEl = document.getElementById("approvedCount");
+
+            if (!usersObj) {
+                pendingContainer.innerHTML = "<div class='text-slate-500 text-center text-xs py-4'>Žiadni používatelia.</div>";
+                approvedContainer.innerHTML = "<div class='text-slate-500 text-center text-xs py-4'>Žiadni používatelia.</div>";
+                pendingCountEl.innerText = "0";
+                approvedCountEl.innerText = "0";
+                return;
+            }
+
+            let pendingHtml = "";
+            let approvedHtml = "";
+            let pendingCount = 0;
+            let approvedCount = 0;
+
+            for (let uid in usersObj) {
+                let u = usersObj[uid];
+                let isApproved = u.status === "approved";
+
+                if (isApproved) {
+                    approvedCount++;
+                    approvedHtml += `
+                        <div class="flex items-center justify-between bg-[#171a21] p-2.5 rounded-lg border border-[#232731] text-xs">
+                            <span class="font-bold text-white">${u.username}</span>
+                            <button onclick="updateUserStatus('${uid}', 'pending')" class="px-2.5 py-1 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white font-bold rounded transition">Zablokovať</button>
+                        </div>
+                    `;
+                } else {
+                    pendingCount++;
+                    pendingHtml += `
+                        <div class="flex items-center justify-between bg-[#171a21] p-2.5 rounded-lg border border-[#232731] text-xs">
+                            <span class="font-bold text-white">${u.username}</span>
+                            <div class="flex gap-1.5">
+                                <button onclick="updateUserStatus('${uid}', 'approved')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded transition">Schváliť</button>
+                                <button onclick="deleteUser('${uid}')" class="px-2.5 py-1 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white font-bold rounded transition">Odmietnuť</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            pendingContainer.innerHTML = pendingHtml || "<div class='text-slate-500 text-center text-xs py-4'>Žiadni čakajúci používatelia.</div>";
+            approvedContainer.innerHTML = approvedHtml || "<div class='text-slate-500 text-center text-xs py-4'>Žiadni schválení používatelia.</div>";
+            
+            pendingCountEl.innerText = pendingCount;
+            approvedCountEl.innerText = approvedCount;
+        }
+
+        window.updateUserStatus = (uid, status) => {
+            db.ref(`users/${uid}`).update({ status });
+        };
+
+        window.deleteUser = (uid) => {
+            if (confirm("Naozaj chceš túto žiadosť vymazať/odmietnuť?")) {
+                db.ref(`users/${uid}`).remove();
+            }
+        };
+    </script>
+</body>
+</html>

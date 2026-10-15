@@ -78,25 +78,14 @@
         </div>
     </div>
 
-    <!-- Admin Panel -->
-    <div id="adminModal" class="absolute inset-0 bg-black/90 flex flex-col justify-center items-center p-5 z-50 hidden">
-        <div class="bg-[#111318] border border-[#232731] p-5 rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 class="text-white font-bold mb-2">Admin Panel – Správa žiadostí</h3>
-            <div id="adminUserList" class="space-y-2 my-4 text-xs">Načítavam používateľov...</div>
-            <button class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs transition" onclick="toggleAdminPanel(false)">Zavrieť</button>
-        </div>
-    </div>
-
     <!-- Vrchná lišta chatu -->
     <div class="top-bar">
         <div class="brand text-xs font-bold">RP Chat Overlay</div>
         <div class="flex gap-2 items-center relative">
-            <!-- Tlačidlo troch bodiek -->
             <button class="w-7 h-7 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-bold flex items-center justify-center cursor-pointer transition" id="menuBtn" onclick="toggleDropdownMenu(event)" title="Menu">
                 <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
             </button>
             
-            <!-- Dropdown Menu pod tromi bodkami -->
             <div id="dropdownMenu" class="absolute right-0 top-full mt-2 w-36 bg-[#161920] border border-[#232731] rounded-lg shadow-xl overflow-hidden hidden z-50 text-xs">
                 <button id="menuAdminBtn" class="w-full text-left px-3 py-2 text-slate-200 hover:bg-[#252a35] transition hidden" onclick="openAdminFromMenu()">Admin panel</button>
                 <button class="w-full text-left px-3 py-2 text-red-400 hover:bg-[#252a35] transition" onclick="logoutUser()">Odhlásiť sa</button>
@@ -130,7 +119,7 @@
 
         let robloxUsername = localStorage.getItem("rp_roblox_username") || "";
         let userUid = robloxUsername ? "rbx_" + robloxUsername.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
-        let isAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
+        let isHardcodedAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
 
         let deviceId = localStorage.getItem("rp_device_id");
         if (!deviceId) {
@@ -140,7 +129,6 @@
 
         const mentionAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
-        // Automatická kontrola stavu účtu hneď po zapnutí, ak je meno uložené
         if (robloxUsername) {
             document.getElementById("robloxInput").value = robloxUsername;
             verifyAndListenUser(userUid, robloxUsername);
@@ -152,24 +140,24 @@
             robloxUsername = username;
             localStorage.setItem("rp_roblox_username", username);
             userUid = "rbx_" + username.toLowerCase().replace(/[^a-z0-9]/g, "");
-            isAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
+            isHardcodedAdmin = window.ADMIN_UIDS && window.ADMIN_UIDS.includes(userUid);
 
             const userRef = db.ref(`users/${userUid}`);
             const snap = await userRef.once('value');
             
             if (snap.exists()) {
                 let userData = snap.val();
-                if (userData.deviceId && userData.deviceId !== deviceId && !isAdmin) {
+                if (userData.deviceId && userData.deviceId !== deviceId && !isHardcodedAdmin) {
                     alert("Toto meno je už zaregistrované na inom zariadení!");
                     return;
                 }
-                if (isAdmin) userData.status = "approved";
+                if (isHardcodedAdmin) userData.status = "approved";
                 await userRef.update({ deviceId, status: userData.status || "pending" });
             } else {
                 await userRef.set({
                     username,
-                    status: isAdmin ? "approved" : "pending",
-                    isAdmin,
+                    status: isHardcodedAdmin ? "approved" : "pending",
+                    isAdmin: isHardcodedAdmin ? true : false,
                     deviceId,
                     requestedAt: Date.now()
                 });
@@ -181,11 +169,14 @@
             db.ref(`users/${uid}`).on("value", (snap) => {
                 if (!snap.exists()) return;
                 let userData = snap.val();
+                let userIsAdmin = isHardcodedAdmin || userData.isAdmin === true;
                 
-                if (userData.status === "approved" || (window.ADMIN_UIDS && window.ADMIN_UIDS.includes(uid))) {
+                if (userData.status === "approved" || userIsAdmin) {
                     document.getElementById("authScreen").style.display = "none";
-                    if (window.ADMIN_UIDS && window.ADMIN_UIDS.includes(uid)) {
+                    if (userIsAdmin) {
                         document.getElementById("menuAdminBtn").style.display = "block";
+                    } else {
+                        document.getElementById("menuAdminBtn").style.display = "none";
                     }
                     initChat();
                 } else {
@@ -197,7 +188,6 @@
             db.ref("users").on("value", (snap) => {
                 const val = snap.val();
                 onlineUsers = val ? Object.values(val).filter(u => u.status === "approved").map(u => u.username) : [];
-                renderAdminUserList(val);
             });
         }
 
@@ -207,57 +197,19 @@
             db.ref("global_messages").on("child_added", (snap) => renderMessage(snap.key, snap.val()));
         }
 
-        function renderAdminUserList(usersObj) {
-            const listContainer = document.getElementById("adminUserList");
-            if (!usersObj) {
-                listContainer.innerHTML = "<div class='text-slate-400 text-center'>Žiadni používatelia v databáze.</div>";
-                return;
-            }
-
-            let html = "";
-            for (let uid in usersObj) {
-                let u = usersObj[uid];
-                let isApproved = u.status === "approved";
-                html += `
-                    <div class="flex items-center justify-between bg-[#171a21] p-2.5 rounded-lg border border-[#232731]">
-                        <div>
-                            <span class="font-bold text-white">${u.username}</span>
-                            <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded ${isApproved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">
-                                ${isApproved ? 'Schválený' : 'Čaká na schválenie'}
-                            </span>
-                        </div>
-                        <div>
-                            ${!isApproved ? `<button onclick="approveUser('${uid}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] transition">Schváliť</button>` : `<button onclick="revokeUser('${uid}')" class="px-2.5 py-1 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white font-bold rounded text-[10px] transition">Zablokovať</button>`}
-                        </div>
-                    </div>
-                `;
-            }
-            listContainer.innerHTML = html;
-        }
-
-        window.approveUser = (uid) => {
-            db.ref(`users/${uid}`).update({ status: "approved" });
-        };
-
-        window.revokeUser = (uid) => {
-            db.ref(`users/${uid}`).update({ status: "pending" });
-        };
-
-        // Ovládanie menu s tromi bodkami
         function toggleDropdownMenu(e) {
             e.stopPropagation();
             const menu = document.getElementById("dropdownMenu");
             menu.classList.toggle("hidden");
         }
 
-        // Zatvorenie menu pri kliknutí hocikde inam
         window.addEventListener("click", () => {
             document.getElementById("dropdownMenu").classList.add("hidden");
         });
 
         function openAdminFromMenu() {
             document.getElementById("dropdownMenu").classList.add("hidden");
-            toggleAdminPanel(true);
+            ipcRenderer.send('open-admin-window');
         }
 
         function logoutUser() {
@@ -364,10 +316,6 @@
             `;
             chat.scrollTop = chat.scrollHeight;
         }
-
-        window.toggleAdminPanel = (show) => {
-            document.getElementById("adminModal").style.display = show ? "flex" : "none";
-        };
     </script>
 </body>
 </html>
