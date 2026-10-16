@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="sk">
+
+<head>
+    <meta charset="UTF-8">
+    <title>DrugWipe 6 S</title>
+    <style>
+        html,
+        body {
+            background: transparent !important;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            background: rgba(17, 17, 17, 0.95);
+            border: 2px solid #333;
+            border-radius: 12px;
+            width: 400px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            color: #fff;
+        }
+
+        h2 {
+            color: #f39c12;
+            margin-bottom: 15px;
+        }
+
+        .results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .card {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            text-transform: uppercase;
+        }
+
+        .card.negative {
+            background: rgba(46, 204, 113, 0.2);
+            border: 1px solid #2ecc71;
+            color: #2ecc71;
+        }
+
+        .footer-text {
+            font-size: 11px;
+            color: #888;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>DrugWipe 6 S Results</h2>
+        <div class="results-list" id="resultsList">
+            <!-- Dynamicky vkladané výsledky -->
+        </div>
+        <div class="footer-text">Automaticky sa zavrie za 8 sekúnd alebo stlačte ESC</div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        ipcRenderer.on('set-drugwipe-results', (event, selectedItems) => {
+            const container = document.getElementById('resultsList');
+            container.innerHTML = "";
+
+            if (!selectedItems || selectedItems.length === 0) {
+                const card = document.createElement('div');
+                card.className = "card negative";
+                card.innerText = "Negatívny";
+                container.appendChild(card);
+            } else {
+                selectedItems.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = "card";
+                    card.innerText = "POZITÍVNY: " + item;
+                    container.appendChild(card);
+                });
+            }
+        });
+
+        setTimeout(() => { window.close(); }, 8000);
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.close(); });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <title>Výzva na test</title>
+    <style>
+        body { background: rgba(17, 19, 24, 0.95); color: #fff; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: #1f232a; padding: 20px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #333; }
+        input { width: 90%; padding: 8px; margin: 10px 0; background: #111; border: 1px solid #444; color: #fff; border-radius: 4px; }
+        button { padding: 8px 15px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-accept { background: #2ecc71; color: #fff; }
+        .btn-decline { background: #e74c3c; color: #fff; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div class="box" id="promptBox">
+        <h3 id="policeText">Policajt vám zaslal test dychu.</h3>
+        <p>Prajete si test prijať?</p>
+        <button class="btn-accept" onclick="acceptTest()">Prijať</button>
+        <button class="btn-decline" onclick="declineTest()">Odmietnuť</button>
+    </div>
+
+    <div class="box" id="inputBox" style="display:none;">
+        <h3>Zadajte nameranú hodnotu (‰)</h3>
+        <input type="text" id="valueInput" placeholder="Napr. 1.25">
+        <button class="btn-accept" onclick="sendValue()">Odoslať</button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const firebaseConfig = {
+            apiKey: "AIzaSyBuxsqmHcgsGb3zvRIX6TvuRQ9Tc9JQVc8",
+            authDomain: "rp-chat-slovakcity.firebaseapp.com",
+            databaseURL: "https://rp-chat-slovakcity-default-rtdb.europe-west1.firebasedatabase.app/",
+            projectId: "rp-chat-slovakcity"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentRequestData = null;
+
+        ipcRenderer.on('init-drager-target', (event, data) => {
+            currentRequestData = data;
+            document.getElementById('policeText').innerText = `Policajt ${data.officer} vám zaslal test dychu.`;
+        });
+
+        function acceptTest() {
+            document.getElementById('promptBox').style.display = 'none';
+            document.getElementById('inputBox').style.display = 'block';
+        }
+
+        function declineTest() {
+            if (currentRequestData) {
+                db.ref(`drager_requests/${currentRequestData.requestId}`).update({ status: "declined" });
+                db.ref("global_messages").push({
+                    sender: localStorage.getItem("rp_roblox_username") || "Hráč",
+                    text: `odmietol test dychu od policajta ${currentRequestData.officer}.`,
+                    timestamp: Date.now()
+                });
+            }
+            window.close();
+        }
+
+        function sendValue() {
+            const val = document.getElementById('valueInput').value;
+            if (!val) return;
+
+            if (currentRequestData) {
+                db.ref(`drager_requests/${currentRequestData.requestId}`).update({ status: "accepted", value: val });
+                // Do globálneho chatu alebo cez špeciálny event pošleme info policajtovi
+                db.ref("global_messages").push({
+                    sender: localStorage.getItem("rp_roblox_username") || "Hráč",
+                    text: `nameral hodnotu ${val} ‰ pre test dychu od ${currentRequestData.officer}.`,
+                    timestamp: Date.now()
+                });
+
+                // Otvoríme výsledné okno priamo pre policajta alebo odošleme výsledok
+                ipcRenderer.send('open-drager-result-window', val);
+            }
+            window.close();
+        }
+    </script>
+</body>
+</html>
